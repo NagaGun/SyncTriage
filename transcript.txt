@@ -1,0 +1,1 @@
+Sarah will send the updated deck to the client by Friday. We decided to go with Next.js for the frontend. Tom needs to set up the Vercel deployment. It's still unclear who owns the QA process. We agreed to meet weekly on Thursdays. The pricing model is TBD — not sure yet how to handle enterprise tiers.
