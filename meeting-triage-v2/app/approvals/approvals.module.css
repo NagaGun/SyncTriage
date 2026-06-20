@@ -1,0 +1,67 @@
+/* approvals.module.css */
+
+.container {
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+  font-family: 'Inter', sans-serif;
+  color: var(--color-text-primary);
+}
+
+.title {
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--color-primary);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1.5rem;
+}
+
+.table th,
+.table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-primary);
+}
+
+.table th {
+  background: var(--color-background-secondary);
+  font-weight: 500;
+}
+
+.approveBtn {
+  background: var(--color-success);
+  color: white;
+  border: none;
+  border-radius: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.approveBtn:hover {
+  background: var(--color-success-dark);
+}
+
+.skipBtn {
+  background: var(--color-secondary);
+  color: white;
+  border: none;
+  border-radius: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.skipBtn:hover {
+  background: var(--color-secondary-dark);
+}
+
+.empty {
+  font-style: italic;
+  color: var(--color-muted);
+}

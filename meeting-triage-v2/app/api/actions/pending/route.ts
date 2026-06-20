@@ -1,0 +1,28 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!
+);
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const meetingId = searchParams.get('meetingId');
+
+  if (!meetingId) {
+    return NextResponse.json({ error: 'meetingId query param required' }, { status: 400 });
+  }
+
+  const { data, error } = await supabase
+    .from('pending_actions')
+    .select('*')
+    .eq('meeting_id', meetingId)
+    .eq('status', 'pending');
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json(data ?? []);
+}
