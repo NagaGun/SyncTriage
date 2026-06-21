@@ -48,10 +48,12 @@ export async function sendEmail(
   const message = [
     `To: ${to}`,
     `Subject: ${subject}`,
+    "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=utf-8",
+    "Content-Transfer-Encoding: 7bit",
     "",
     body
-  ].join("\n")
+  ].join("\r\n")
 
   const encoded = Buffer.from(message).toString("base64url")
 
@@ -64,19 +66,48 @@ export async function sendEmail(
 export async function createCalendarEvent(
   userId: string,
   title: string,
-  date: string,
+  dateStr: string,
   attendeeEmail?: string
 ) {
   const auth = await getAuthClientForUser(userId)
   const calendar = google.calendar({ version: "v3", auth })
 
+  let start: any = {}
+  let end: any = {}
+
+  // Check if it's a valid date or datetime
+  const isDateTime = dateStr.includes("T") || dateStr.includes(":")
+  
+  if (isDateTime) {
+    let parsedDate = new Date(dateStr)
+    if (isNaN(parsedDate.getTime())) {
+      parsedDate = new Date() // Fallback to now
+    }
+    const startStr = parsedDate.toISOString()
+    // Default duration to 30 mins later
+    const endStr = new Date(parsedDate.getTime() + 30 * 60 * 1000).toISOString()
+    
+    start = { dateTime: startStr }
+    end = { dateTime: endStr }
+  } else {
+    // Expected YYYY-MM-DD
+    let matched = dateStr.trim().match(/^\d{4}-\d{2}-\d{2}$/)
+    let cleanDate = matched ? matched[0] : new Date().toISOString().split("T")[0]
+    
+    start = { date: cleanDate }
+    end = { date: cleanDate }
+  }
+
+  // Only include attendee if it is a valid email
+  const isEmail = attendeeEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(attendeeEmail.trim())
+
   await calendar.events.insert({
     calendarId: "primary",
     requestBody: {
       summary: title,
-      start: { date },
-      end:   { date },
-      attendees: attendeeEmail ? [{ email: attendeeEmail }] : []
+      start,
+      end,
+      attendees: isEmail ? [{ email: attendeeEmail!.trim() }] : []
     }
   })
 }

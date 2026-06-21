@@ -22,33 +22,71 @@ export default function ApprovalsPage() {
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [session, setSession] = useState<any>(null)
+  const [editedActions, setEditedActions] = useState<Record<string, any>>({})
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
-  }, [])
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      if (session) {
+        fetchActions()
+      } else {
+        setLoading(false)
+      }
+    })
 
-  useEffect(() => {
-    fetchActions()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      if (session) {
+        fetchActions()
+      } else {
+        setActions([])
+        setLoading(false)
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   async function fetchActions() {
+    setLoading(true)
     const { data } = await supabase
       .from("pending_actions")
       .select("*")
       .eq("status", "pending")
+      .neq("tool_name", "skip_item")
       .order("created_at", { ascending: true })
     setActions(data || [])
+    
+    // Initialize edited args mapping
+    const edits: Record<string, any> = {}
+    if (data) {
+      data.forEach((action: Action) => {
+        edits[action.id] = { ...action.args }
+      })
+    }
+    setEditedActions(edits)
     setLoading(false)
+  }
+
+  const handleFieldChange = (actionId: string, fieldName: string, value: any) => {
+    setEditedActions(prev => ({
+      ...prev,
+      [actionId]: {
+        ...prev[actionId],
+        [fieldName]: value
+      }
+    }))
   }
 
   async function handleApprove(id: string) {
     if (!session?.user?.id) return
     setProcessingId(id)
+    const editedArgs = editedActions[id]
     try {
       const res = await fetch(`/api/actions/${id}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: session.user.id })
+        body: JSON.stringify({ userId: session.user.id, editedArgs })
       })
       if (!res.ok) {
         const data = await res.json()
@@ -95,6 +133,7 @@ export default function ApprovalsPage() {
         {actions.map((action, idx) => {
           const badge = TOOL_BADGES[action.tool_name] || { label: "Action", className: "badge" }
           const isProcessing = processingId === action.id
+          const currentArgs = editedActions[action.id] || action.args
 
           return (
             <div
@@ -116,15 +155,32 @@ export default function ApprovalsPage() {
                   <>
                     <div className="action-card-field">
                       <div className="action-card-label">To</div>
-                      <div className="action-card-value">{action.args.to}</div>
+                      <input
+                        type="email"
+                        className="form-input"
+                        value={currentArgs.to || ""}
+                        onChange={e => handleFieldChange(action.id, "to", e.target.value)}
+                        style={{ width: "100%", padding: "8px 12px", background: "var(--bg-input)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--text-primary)" }}
+                      />
                     </div>
                     <div className="action-card-field">
                       <div className="action-card-label">Subject</div>
-                      <div className="action-card-value" style={{ fontWeight: 500 }}>{action.args.subject}</div>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={currentArgs.subject || ""}
+                        onChange={e => handleFieldChange(action.id, "subject", e.target.value)}
+                        style={{ width: "100%", padding: "8px 12px", background: "var(--bg-input)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--text-primary)", fontWeight: 500 }}
+                      />
                     </div>
                     <div className="action-card-field">
                       <div className="action-card-label">Body</div>
-                      <div className="action-card-value" style={{ color: "var(--text-secondary)" }}>{action.args.body}</div>
+                      <textarea
+                        className="form-textarea"
+                        value={currentArgs.body || ""}
+                        onChange={e => handleFieldChange(action.id, "body", e.target.value)}
+                        style={{ width: "100%", minHeight: "120px", padding: "10px 12px", background: "var(--bg-input)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--text-primary)", fontSize: "13px" }}
+                      />
                     </div>
                   </>
                 )}
@@ -132,19 +188,35 @@ export default function ApprovalsPage() {
                 {action.tool_name === "create_calendar_block" && (
                   <>
                     <div className="action-card-field">
-                      <div className="action-card-label">Event</div>
-                      <div className="action-card-value" style={{ fontWeight: 500 }}>{action.args.title}</div>
+                      <div className="action-card-label">Event Title</div>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={currentArgs.title || ""}
+                        onChange={e => handleFieldChange(action.id, "title", e.target.value)}
+                        style={{ width: "100%", padding: "8px 12px", background: "var(--bg-input)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--text-primary)" }}
+                      />
                     </div>
                     <div className="action-card-field">
                       <div className="action-card-label">Date</div>
-                      <div className="action-card-value">{action.args.date}</div>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={currentArgs.date || ""}
+                        onChange={e => handleFieldChange(action.id, "date", e.target.value)}
+                        style={{ width: "100%", padding: "8px 12px", background: "var(--bg-input)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--text-primary)" }}
+                      />
                     </div>
-                    {action.args.attendee && (
-                      <div className="action-card-field">
-                        <div className="action-card-label">Attendee</div>
-                        <div className="action-card-value">{action.args.attendee}</div>
-                      </div>
-                    )}
+                    <div className="action-card-field">
+                      <div className="action-card-label">Attendee Email</div>
+                      <input
+                        type="email"
+                        className="form-input"
+                        value={currentArgs.attendee || ""}
+                        onChange={e => handleFieldChange(action.id, "attendee", e.target.value)}
+                        style={{ width: "100%", padding: "8px 12px", background: "var(--bg-input)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--text-primary)" }}
+                      />
+                    </div>
                   </>
                 )}
 

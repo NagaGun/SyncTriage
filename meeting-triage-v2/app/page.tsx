@@ -1,9 +1,30 @@
 "use client"
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 
-export default function LandingPage() {
+function AuthErrorBanner() {
+  const searchParams = useSearchParams()
+  const authError = searchParams.get("auth_error")
+  if (!authError) return null
+
+  return (
+    <div style={{
+      maxWidth: 720,
+      margin: "24px auto 0",
+      padding: "12px 16px",
+      background: "var(--danger-bg)",
+      border: "1px solid var(--danger-border)",
+      borderRadius: "var(--radius-md)",
+      color: "var(--danger-text)",
+      fontSize: 14,
+    }}>
+      Sign-in failed: {authError}
+    </div>
+  )
+}
+
+function LandingPageContent() {
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
@@ -25,7 +46,7 @@ export default function LandingPage() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        scopes: "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/calendar.events",
+        scopes: "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events",
         queryParams: { access_type: "offline", prompt: "consent" },
         redirectTo: `${window.location.origin}/auth/callback`
       }
@@ -53,6 +74,10 @@ export default function LandingPage() {
           Sign in with Google
         </button>
       </nav>
+
+      <Suspense fallback={null}>
+        <AuthErrorBanner />
+      </Suspense>
 
       {/* Hero */}
       <section className="landing-hero animate-in">
@@ -106,4 +131,8 @@ export default function LandingPage() {
       </section>
     </>
   )
+}
+
+export default function LandingPage() {
+  return <LandingPageContent />
 }

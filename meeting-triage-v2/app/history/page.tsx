@@ -17,7 +17,8 @@ export default function HistoryPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   useEffect(() => {
-    async function fetch() {
+    async function fetchMeetings() {
+      setLoading(true)
       const { data } = await supabase
         .from("meetings")
         .select(`
@@ -30,7 +31,25 @@ export default function HistoryPage() {
       setMeetings((data as any) || [])
       setLoading(false)
     }
-    fetch()
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        fetchMeetings()
+      } else {
+        setLoading(false)
+      }
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        fetchMeetings()
+      } else {
+        setMeetings([])
+        setLoading(false)
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   return (

@@ -7,7 +7,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 )
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const { editedArgs, userId } = await req.json()
 
   if (!userId) {
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const { data: action, error } = await supabase
     .from("pending_actions")
     .select("*")
-    .eq("id", params.id)
+    .eq("id", id)
     .single()
 
   if (error || !action) {
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await supabase
       .from("pending_actions")
       .update({ status: "sent", sent_at: new Date().toISOString(), edited_args: editedArgs || null })
-      .eq("id", params.id)
+      .eq("id", id)
 
     return NextResponse.json({ success: true })
   } catch (e: any) {

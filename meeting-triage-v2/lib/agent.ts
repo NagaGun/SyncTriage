@@ -30,11 +30,12 @@ Tool specifications:
 }
 
 async function stagePendingAction(meetingId: string, call: any) {
+  const isSkip = call.name === "skip_item"
   const { error } = await supabase.from("pending_actions").insert({
     meeting_id: meetingId,
     tool_name: call.name,
     args: call.args,
-    status: "pending"
+    status: isSkip ? "skipped" : "pending"
   })
   if (error) throw new Error(`Failed to stage action: ${error.message}`)
 }
@@ -100,9 +101,9 @@ export async function runAgent(triageResult: any, meetingId: string) {
     if (call.name && call.args) {
       console.log(`Staging: ${call.name}`, call.args)
       await stagePendingAction(meetingId, call)
-      stagedCount++
+      if (call.name !== "skip_item") stagedCount++
     }
   }
 
-  return { staged: stagedCount > 0 }
+  return { staged: stagedCount > 0, stagedCount }
 }
