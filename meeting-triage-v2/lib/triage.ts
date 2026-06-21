@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from "@google/generative-ai"
 import { createClient } from "@supabase/supabase-js"
 
-const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
@@ -59,17 +57,44 @@ function applyGuardrails(data: any) {
 }
 
 export async function triage(transcript: string, userId?: string) {
-  const model = genai.getGenerativeModel({
-    model: "gemini-2.0-flash",
-    systemInstruction: SYSTEM
-  })
+  const invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions"
+  
+  const apiKey = process.env.NVIDIA_API_KEY || "";
+  const authHeader = apiKey.startsWith("Bearer ") ? apiKey : `Bearer ${apiKey}`;
 
   let raw: string
   try {
-    const result = await model.generateContent(transcript)
-    raw = result.response.text()
+    const response = await fetch(invoke_url, {
+      method: "POST",
+      headers: {
+        "Authorization": authHeader,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({
+        model: "google/gemma-3n-e2b-it",
+        messages: [
+          { role: "system", content: SYSTEM },
+          { role: "user", content: transcript }
+        ],
+        max_tokens: 1024,
+        temperature: 0.20,
+        top_p: 0.70,
+        frequency_penalty: 0.00,
+        presence_penalty: 0.00,
+        stream: false
+      })
+    })
+
+    if (!response.ok) {
+      const err = await response.text()
+      throw new Error(`HTTP ${response.status}: ${err}`)
+    }
+
+    const data = await response.json()
+    raw = data.choices?.[0]?.message?.content || ""
   } catch (e: any) {
-    throw new Error(`Gemini API call failed: ${e.message}`)
+    throw new Error(`NVIDIA API call failed: ${e.message}`)
   }
 
   const cleaned = raw

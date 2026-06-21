@@ -1,8 +1,5 @@
-import { GoogleGenerativeAI } from "@google/generative-ai"
 import { createClient } from "@supabase/supabase-js"
-import { TOOL_DEFINITIONS } from "./tools"
 
-const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
@@ -21,7 +18,15 @@ function buildAgentPrompt(triageResult: any): string {
 Action items:
 ${items}
 
-Call the appropriate tool for each item. Use the exact item ID provided.`
+ALWAYS respond with valid JSON only — no markdown, no explanation.
+Output a JSON array of objects. Each object MUST have:
+- "name": the exact name of the tool ("draft_followup_email", "create_calendar_block", or "skip_item")
+- "args": an object with the required parameters for that tool
+
+Tool specifications:
+1. draft_followup_email: requires "to" (string), "subject" (string), "body" (string), "item_id" (string)
+2. create_calendar_block: requires "title" (string), "date" (string ISO 8601), "attendee" (string), "item_id" (string)
+3. skip_item: requires "item_id" (string), "reason" (string)`
 }
 
 async function stagePendingAction(meetingId: string, call: any) {
@@ -35,36 +40,69 @@ async function stagePendingAction(meetingId: string, call: any) {
 }
 
 export async function runAgent(triageResult: any, meetingId: string) {
-  const model = genai.getGenerativeModel({
-    model: "gemini-2.0-flash",
-    tools: [{ functionDeclarations: TOOL_DEFINITIONS } as any]
-  })
-
-  const chat = model.startChat()
+  const invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions"
   const prompt = buildAgentPrompt(triageResult)
 
-  let response = await chat.sendMessage(prompt)
-  let iterations = 0
-  const MAX_ITERATIONS = 10
+  const apiKey = process.env.NVIDIA_API_KEY || "";
+  const authHeader = apiKey.startsWith("Bearer ") ? apiKey : `Bearer ${apiKey}`;
 
-  while (response.functionCalls()?.length > 0 && iterations < MAX_ITERATIONS) {
-    iterations++
-    const calls = response.functionCalls()!
+  let raw: string
+  try {
+    const response = await fetch(invoke_url, {
+      method: "POST",
+      headers: {
+        "Authorization": authHeader,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({
+        model: "google/gemma-3n-e2b-it",
+        messages: [
+          { role: "user", content: prompt }
+        ],
+        max_tokens: 1024,
+        temperature: 0.20,
+        top_p: 0.70,
+        frequency_penalty: 0.00,
+        presence_penalty: 0.00,
+        stream: false
+      })
+    })
 
-    for (const call of calls) {
-      console.log(`Staging: ${call.name}`, call.args)
-      await stagePendingAction(meetingId, call)
+    if (!response.ok) {
+      const err = await response.text()
+      throw new Error(`HTTP ${response.status}: ${err}`)
     }
 
-    response = await chat.sendMessage(
-      calls.map(c => ({
-        functionResponse: {
-          name: c.name,
-          response: { staged: true }
-        }
-      }))
-    )
+    const data = await response.json()
+    raw = data.choices?.[0]?.message?.content || ""
+  } catch (e: any) {
+    throw new Error(`NVIDIA API call failed: ${e.message}`)
   }
 
-  return { staged: iterations > 0 }
+  const cleaned = raw
+    .replace(/```json\n?/g, "")
+    .replace(/```/g, "")
+    .trim()
+
+  let calls: any[]
+  try {
+    calls = JSON.parse(cleaned)
+    if (!Array.isArray(calls)) {
+      calls = [calls]
+    }
+  } catch {
+    throw new Error("Model returned non-JSON output")
+  }
+
+  let stagedCount = 0
+  for (const call of calls) {
+    if (call.name && call.args) {
+      console.log(`Staging: ${call.name}`, call.args)
+      await stagePendingAction(meetingId, call)
+      stagedCount++
+    }
+  }
+
+  return { staged: stagedCount > 0 }
 }

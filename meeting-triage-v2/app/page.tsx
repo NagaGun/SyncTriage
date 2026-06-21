@@ -1,38 +1,25 @@
 "use client"
 import { useState, useEffect } from "react"
-import { createClient } from "@supabase/supabase-js"
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabase"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-type ActionItem = { text: string; owner?: string; deadline?: string; priority: "P0" | "P1" | "P2" }
-type Decision = { text: string }
-type TriageResult = { action_items: ActionItem[]; decisions: Decision[]; open_questions: Decision[] }
-
-const PRIORITY_STYLES: Record<string, string> = {
-  P0: "background:#FAECE7;color:#712B13",
-  P1: "background:#FAEEDA;color:#633806",
-  P2: "background:#F1EFE8;color:#444441"
-}
-
-export default function Page() {
-  const [transcript, setTranscript] = useState("")
-  const [result, setResult] = useState<TriageResult | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export default function LandingPage() {
   const [session, setSession] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
+      setLoading(false)
+      if (session) router.push("/dashboard")
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
+      if (session) router.push("/dashboard")
     })
     return () => subscription.unsubscribe()
-  }, [])
+  }, [router])
 
   async function handleSignIn() {
     await supabase.auth.signInWithOAuth({
@@ -45,124 +32,78 @@ export default function Page() {
     })
   }
 
-  async function handleTriage() {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch("/api/triage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript, userId: session?.user?.id })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setResult(data)
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
-    }
+  if (loading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div className="spinner" style={{ width: 32, height: 32 }} />
+      </div>
+    )
   }
 
+  if (session) return null
+
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1rem" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 500, marginBottom: 8 }}>Meeting triage</h1>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <p style={{ fontSize: 14, color: "#666", margin: 0 }}>
-          Paste a meeting transcript and get structured action items, decisions, and open questions.
+    <>
+      {/* Navbar */}
+      <nav className="landing-nav">
+        <div className="landing-logo">
+          Sync<span>Triage</span>
+        </div>
+        <button onClick={handleSignIn} className="btn-secondary btn-sm">
+          Sign in with Google
+        </button>
+      </nav>
+
+      {/* Hero */}
+      <section className="landing-hero animate-in">
+        <div className="landing-badge">
+          ⚡ AI-Powered Meeting Intelligence
+        </div>
+        <h1 className="landing-title">
+          Stop losing track of<br />
+          <span className="accent-text">what was decided</span>
+        </h1>
+        <p className="landing-description">
+          Paste any meeting transcript and let AI extract action items, decisions, 
+          and open questions — then automatically draft follow-ups and schedule deadlines.
         </p>
-        {!session ? (
-          <button onClick={handleSignIn} style={{ padding: "6px 14px", fontSize: 13, borderRadius: 6, background: "#4285F4", color: "#fff", border: "none", cursor: "pointer" }}>
-            Sign in with Google
-          </button>
-        ) : (
-          <div style={{ fontSize: 13, color: "#444" }}>Signed in as {session.user.email}</div>
-        )}
-      </div>
+        <button onClick={handleSignIn} className="landing-cta" id="cta-signin">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" />
+          </svg>
+          Get Started with Google
+        </button>
+      </section>
 
-      <textarea
-        value={transcript}
-        onChange={e => setTranscript(e.target.value)}
-        placeholder="Paste your meeting transcript here..."
-        style={{ width: "100%", minHeight: 160, padding: "10px 12px", fontSize: 14,
-          border: "1px solid #ddd", borderRadius: 8, resize: "vertical", marginBottom: 12, color: "#000" }}
-      />
-
-      <button
-        onClick={handleTriage}
-        disabled={loading || !transcript.trim()}
-        style={{ padding: "9px 20px", fontSize: 14, borderRadius: 8, border: "none",
-          background: loading ? "#ccc" : "#111", color: "#fff", cursor: loading ? "default" : "pointer" }}
-      >
-        {loading ? "Triaging..." : "Triage meeting"}
-      </button>
-
-      {error && (
-        <div style={{ marginTop: 16, padding: "10px 14px", background: "#FCEBEB",
-          color: "#A32D2D", borderRadius: 8, fontSize: 14 }}>
-          {error}
+      {/* Features */}
+      <section className="landing-features">
+        <div className="feature-card animate-in" style={{ animationDelay: "0.1s" }}>
+          <div className="feature-icon">🎯</div>
+          <h3 className="feature-title">AI Extraction</h3>
+          <p className="feature-desc">
+            Gemini-powered analysis extracts action items with owners, deadlines, 
+            and P0/P1/P2 priority levels from raw transcripts.
+          </p>
         </div>
-      )}
 
-      {result && (
-        <div style={{ marginTop: 24, color: "#000" }}>
-          <Section title="Action items">
-            {result.action_items.map((item, i) => (
-              <div key={i} style={{ padding: "10px 14px", border: "0.5px solid #eee",
-                borderRadius: 8, marginBottom: 8, display: "flex", gap: 10, alignItems: "flex-start" }}>
-                <span style={{ fontSize: 11, fontWeight: 500, padding: "2px 7px",
-                  borderRadius: 6, flexShrink: 0, ...parseStyle(PRIORITY_STYLES[item.priority]) }}>
-                  {item.priority}
-                </span>
-                <div>
-                  <div style={{ fontSize: 14 }}>{item.text}</div>
-                  {(item.owner || item.deadline) && (
-                    <div style={{ fontSize: 12, color: "#888", marginTop: 3 }}>
-                      {item.owner && <span>{item.owner}</span>}
-                      {item.owner && item.deadline && <span> · </span>}
-                      {item.deadline && <span>{item.deadline}</span>}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </Section>
-
-          <Section title="Decisions">
-            {result.decisions.map((d, i) => (
-              <div key={i} style={{ fontSize: 14, padding: "8px 14px", borderLeft: "2px solid #ddd", marginBottom: 6 }}>
-                {d.text}
-              </div>
-            ))}
-          </Section>
-
-          <Section title="Open questions">
-            {result.open_questions.map((q, i) => (
-              <div key={i} style={{ fontSize: 14, padding: "8px 14px", borderLeft: "2px solid #f0c040", marginBottom: 6 }}>
-                {q.text}
-              </div>
-            ))}
-          </Section>
+        <div className="feature-card animate-in" style={{ animationDelay: "0.2s" }}>
+          <div className="feature-icon">✅</div>
+          <h3 className="feature-title">One-Click Approvals</h3>
+          <p className="feature-desc">
+            Review AI-staged follow-up emails and calendar events, then approve 
+            or skip with a single click.
+          </p>
         </div>
-      )}
-    </main>
-  )
-}
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 24 }}>
-      <h2 style={{ fontSize: 13, fontWeight: 500, textTransform: "uppercase",
-        letterSpacing: "0.06em", color: "#888", marginBottom: 10 }}>{title}</h2>
-      {children}
-    </div>
+        <div className="feature-card animate-in" style={{ animationDelay: "0.3s" }}>
+          <div className="feature-icon">🔄</div>
+          <h3 className="feature-title">Automatic Follow-ups</h3>
+          <p className="feature-desc">
+            Sent emails with no reply after 48 hours get automatically re-pinged. 
+            Never let action items fall through the cracks.
+          </p>
+        </div>
+      </section>
+    </>
   )
-}
-
-function parseStyle(str: string): React.CSSProperties {
-  if (!str) return {}
-  return Object.fromEntries(str.split(";").filter(Boolean).map(s => {
-    const [k, v] = s.split(":")
-    return [k.trim().replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v.trim()]
-  }))
 }

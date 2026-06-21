@@ -1,71 +1,142 @@
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
+"use client"
+import { useState, useEffect } from "react"
+import { supabase } from "@/lib/supabase"
+import AppShell from "../components/AppShell"
 
-export default async function HistoryPage() {
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll() { return cookies().getAll() } } }
-  )
+type Meeting = {
+  id: string
+  title: string | null
+  created_at: string
+  triage_results: { guardrailed: any }[]
+  pending_actions: { tool_name: string; status: string }[]
+}
 
-  const { data: meetings } = await supabase
-    .from("meetings")
-    .select(`
-      id, title, created_at,
-      triage_results (guardrailed),
-      pending_actions (tool_name, status)
-    `)
-    .order("created_at", { ascending: false })
-    .limit(20)
+export default function HistoryPage() {
+  const [meetings, setMeetings] = useState<Meeting[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function fetch() {
+      const { data } = await supabase
+        .from("meetings")
+        .select(`
+          id, title, created_at,
+          triage_results (guardrailed),
+          pending_actions (tool_name, status)
+        `)
+        .order("created_at", { ascending: false })
+        .limit(20)
+      setMeetings((data as any) || [])
+      setLoading(false)
+    }
+    fetch()
+  }, [])
 
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1rem" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 500, marginBottom: 24 }}>Meeting history</h1>
+    <AppShell>
+      <div className="page-container">
+        <div className="page-header">
+          <h1 className="page-title">History</h1>
+          <p className="page-subtitle">Past meeting triages and their results.</p>
+        </div>
 
-      {!meetings?.length && (
-        <p style={{ fontSize: 14, color: "#888" }}>No meetings yet.</p>
-      )}
-
-      {meetings?.map(meeting => {
-        const actions = (meeting.pending_actions as any[]) || []
-        const sent    = actions.filter(a => a.status === "sent").length
-        const pending = actions.filter(a => a.status === "pending").length
-        const result  = (meeting.triage_results as any[])?.[0]?.guardrailed
-        const itemCount = result?.action_items?.length ?? 0
-
-        return (
-          <div key={meeting.id} style={{
-            border: "0.5px solid var(--color-border-tertiary)",
-            borderRadius: 12, padding: "14px 16px", marginBottom: 10
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 4 }}>
-                  {meeting.title || "Untitled meeting"}
-                </div>
-                <div style={{ fontSize: 13, color: "#888" }}>
-                  {new Date(meeting.created_at).toLocaleDateString("en-US", {
-                    month: "short", day: "numeric", year: "numeric"
-                  })}
-                  {" · "}{itemCount} action item{itemCount !== 1 ? "s" : ""}
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {sent > 0 && (
-                  <span style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: "#E1F5EE", color: "#0F6E56" }}>
-                    {sent} sent
-                  </span>
-                )}
-                {pending > 0 && (
-                  <span style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: "#FAEEDA", color: "#633806" }}>
-                    {pending} pending
-                  </span>
-                )}
-              </div>
-            </div>
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
+            <div className="spinner" style={{ width: 28, height: 28 }} />
           </div>
-        )
-      })}
-    </main>
+        )}
+
+        {!loading && meetings.length === 0 && (
+          <div className="empty-state">
+            <div className="empty-state-icon">📁</div>
+            <h3 className="empty-state-title">No meetings yet</h3>
+            <p className="empty-state-text">Run your first triage from the Dashboard to see history here.</p>
+          </div>
+        )}
+
+        {meetings.map((meeting, idx) => {
+          const actions = meeting.pending_actions || []
+          const sent = actions.filter(a => a.status === "sent").length
+          const pending = actions.filter(a => a.status === "pending").length
+          const result = meeting.triage_results?.[0]?.guardrailed
+          const itemCount = result?.action_items?.length ?? 0
+          const isExpanded = expandedId === meeting.id
+
+          return (
+            <div key={meeting.id} className="animate-in" style={{ animationDelay: `${idx * 0.04}s` }}>
+              <div
+                className="meeting-row"
+                onClick={() => setExpandedId(isExpanded ? null : meeting.id)}
+                style={isExpanded ? { borderRadius: "var(--radius-md) var(--radius-md) 0 0", borderBottomColor: "transparent" } : {}}
+              >
+                <div className="meeting-row-left">
+                  <div className="meeting-row-title">{meeting.title || "Untitled meeting"}</div>
+                  <div className="meeting-row-meta">
+                    {new Date(meeting.created_at).toLocaleDateString("en-US", {
+                      month: "short", day: "numeric", year: "numeric"
+                    })}
+                    {" · "}{itemCount} action item{itemCount !== 1 ? "s" : ""}
+                  </div>
+                </div>
+                <div className="meeting-row-badges">
+                  {sent > 0 && <span className="badge badge-sent">{sent} sent</span>}
+                  {pending > 0 && <span className="badge badge-pending">{pending} pending</span>}
+                  <span style={{ fontSize: 14, color: "var(--text-tertiary)", marginLeft: 4 }}>
+                    {isExpanded ? "▲" : "▼"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Expanded Detail */}
+              {isExpanded && result && (
+                <div className="meeting-detail animate-in">
+                  {result.action_items?.length > 0 && (
+                    <div style={{ marginBottom: 20 }}>
+                      <h3 className="section-title">Action Items</h3>
+                      {result.action_items.map((item: any, i: number) => (
+                        <div key={i} className="item-card" style={{ marginBottom: 8 }}>
+                          <span className={`priority-badge ${item.priority?.toLowerCase()}-badge`}>
+                            {item.priority}
+                          </span>
+                          <div style={{ flex: 1 }}>
+                            <div className="item-text">{item.text}</div>
+                            {(item.owner || item.deadline) && (
+                              <div className="item-meta">
+                                {item.owner && <span>Owner: {item.owner}</span>}
+                                {item.owner && item.deadline && " · "}
+                                {item.deadline && <span>Due: {item.deadline}</span>}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {result.decisions?.length > 0 && (
+                    <div style={{ marginBottom: 20 }}>
+                      <h3 className="section-title">Decisions</h3>
+                      {result.decisions.map((d: any, i: number) => (
+                        <div key={i} className="decision-card" style={{ marginBottom: 6 }}>{d.text}</div>
+                      ))}
+                    </div>
+                  )}
+
+                  {result.open_questions?.length > 0 && (
+                    <div>
+                      <h3 className="section-title">Open Questions</h3>
+                      {result.open_questions.map((q: any, i: number) => (
+                        <div key={i} className="question-card" style={{ marginBottom: 6 }}>{q.text}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </AppShell>
   )
 }

@@ -8,7 +8,11 @@ const supabase = createClient(
 )
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const { editedArgs, accessToken, refreshToken } = await req.json()
+  const { editedArgs, userId } = await req.json()
+
+  if (!userId) {
+    return NextResponse.json({ error: "userId is required" }, { status: 400 })
+  }
 
   const { data: action, error } = await supabase
     .from("pending_actions")
@@ -24,9 +28,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   try {
     if (action.tool_name === "draft_followup_email") {
-      await sendEmail(accessToken, refreshToken, args.to, args.subject, args.body)
+      await sendEmail(userId, args.to, args.subject, args.body)
     } else if (action.tool_name === "create_calendar_block") {
-      await createCalendarEvent(accessToken, refreshToken, args.title, args.date, args.attendee)
+      await createCalendarEvent(userId, args.title, args.date, args.attendee)
     }
 
     await supabase

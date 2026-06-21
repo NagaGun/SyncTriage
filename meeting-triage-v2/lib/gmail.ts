@@ -1,23 +1,48 @@
 import { google } from "googleapis"
+import { createClient } from "@supabase/supabase-js"
 
-function getOAuthClient(accessToken: string, refreshToken: string) {
-  const oauth2 = new google.auth.OAuth2(
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!
+)
+
+function createOAuth2Client() {
+  return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_REDIRECT_URI
   )
-  oauth2.setCredentials({ access_token: accessToken, refresh_token: refreshToken })
+}
+
+/** Get an authenticated OAuth2 client from a user's stored refresh token */
+export async function getAuthClientForUser(userId: string) {
+  const { data: tokenRecord } = await supabase
+    .from("user_tokens")
+    .select("refresh_token")
+    .eq("user_id", userId)
+    .single()
+
+  if (!tokenRecord?.refresh_token) {
+    throw new Error("No refresh token found for user. Please sign in again.")
+  }
+
+  const oauth2 = createOAuth2Client()
+  oauth2.setCredentials({ refresh_token: tokenRecord.refresh_token })
+
+  // Force a token refresh to get a fresh access_token
+  const { credentials } = await oauth2.refreshAccessToken()
+  oauth2.setCredentials(credentials)
+
   return oauth2
 }
 
 export async function sendEmail(
-  accessToken: string,
-  refreshToken: string,
+  userId: string,
   to: string,
   subject: string,
   body: string
 ) {
-  const auth = getOAuthClient(accessToken, refreshToken)
+  const auth = await getAuthClientForUser(userId)
   const gmail = google.gmail({ version: "v1", auth })
 
   const message = [
@@ -37,13 +62,12 @@ export async function sendEmail(
 }
 
 export async function createCalendarEvent(
-  accessToken: string,
-  refreshToken: string,
+  userId: string,
   title: string,
   date: string,
   attendeeEmail?: string
 ) {
-  const auth = getOAuthClient(accessToken, refreshToken)
+  const auth = await getAuthClientForUser(userId)
   const calendar = google.calendar({ version: "v3", auth })
 
   await calendar.events.insert({
